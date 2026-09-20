@@ -1,0 +1,18 @@
+# Local + generated artifacts. json-render/ is a read-only reference clone
+# (https://github.com/vercel-labs/json-render) and must never be touched.
+json-render/
+node_modules/
+.next/
+dist/
+build/
+coverage/
+tsconfig.tsbuildinfo
+*.log
+.env
+.env.local
+*.ckpt
+*.safetensors
+*.bin
+cache/
+tmp/
+outputs/
