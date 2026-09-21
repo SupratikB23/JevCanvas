@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateAsset } from "@/lib/assets";
-import { DIFFUSION_MODEL, MAX_GENERATIONS_PER_ASSET } from "@/lib/constants";
-import { placeholderFor, ReplicateFluxProvider, type DiffusionProvider } from "@/lib/diffusion";
-import { hasServerSecrets } from "@/lib/env";
+import { MAX_GENERATIONS_PER_ASSET } from "@/lib/constants";
+import { selectDiffusionProvider } from "@/lib/diffusion";
 import { AssetGenerateRequestSchema } from "@/lib/schemas";
 
 const RegenerateSchema = AssetGenerateRequestSchema.extend({
@@ -23,9 +22,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (parsed.data.generationsUsed >= MAX_GENERATIONS_PER_ASSET)
     return NextResponse.json({ error: "Regeneration budget exhausted for this asset." }, { status: 429 });
   try {
-    const provider: DiffusionProvider = hasServerSecrets()
-      ? new ReplicateFluxProvider(process.env.REPLICATE_API_TOKEN ?? "")
-      : { generate: async (r) => ({ url: placeholderFor("Illustration"), model: DIFFUSION_MODEL, seed: (r.seed ?? 0) + 1, width: 1024, height: 768 }) };
+    const provider = selectDiffusionProvider();
     const asset = await generateAsset({
       item: {
         id: parsed.data.assetId, type: "Illustration", required: true,

@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { assetUrlsById, generateAllAssets } from "@/lib/assets";
 import { buildSpecFromCandidates, candidateRecipes, injectAssetUrls, planAssets } from "@/lib/composition";
 import { DIFFUSION_MODEL, JEV_MODEL_ID } from "@/lib/constants";
-import { placeholderFor, ReplicateFluxProvider, type DiffusionProvider } from "@/lib/diffusion";
+import { placeholderFor, selectDiffusionProvider } from "@/lib/diffusion";
 import { estimateCost } from "@/lib/evaluation";
-import { hasServerSecrets } from "@/lib/env";
+import { hasJevSecrets } from "@/lib/env";
 import { newRequestId } from "@/lib/ids";
 import { evaluateComposition, fallbackDecisions } from "@/lib/jev";
 import { logEvent } from "@/lib/logging";
@@ -31,7 +31,8 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   try {
     // Targeted edit: re-decide from the edit prompt, reuse unchanged assets.
-    const jev = hasServerSecrets()
+    // Jev needs only the gateway key; images resolve via selectDiffusionProvider.
+    const jev = hasJevSecrets()
       ? await evaluateComposition({ prompt: parsed.data.prompt, apiKey: process.env.AI_GATEWAY_API_KEY ?? "" })
       : { decisions: fallbackDecisions(parsed.data.prompt), latencyMs: 0, fromFallback: true, questionCount: 12 };
     const combinedPrompt = `${base.prompt} + ${parsed.data.prompt}`;
@@ -43,9 +44,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       const prev = readyById.get(it.id);
       return !prev || prev.type !== it.type;
     });
-    const provider: DiffusionProvider = hasServerSecrets()
-      ? new ReplicateFluxProvider(process.env.REPLICATE_API_TOKEN ?? "")
-      : { generate: async (r) => ({ url: placeholderFor("Illustration"), model: DIFFUSION_MODEL, seed: r.seed, width: 1024, height: 768 }) };
+    const provider = selectDiffusionProvider();
     const fresh = await generateAllAssets({ items: missing, intent: combinedPrompt, provider });
     const freshById = new Map(fresh.map((a) => [a.id, a]));
     const assets = items.map((it) => freshById.get(it.id) ?? readyById.get(it.id) ?? {
@@ -74,7 +73,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         jevLatencyMs: jev.latencyMs, diffusionLatencyMs: 0, renderLatencyMs: 0, totalLatencyMs,
         jevCalls: 1, diffusionCalls: fresh.filter((a) => a.source === "diffusion").length,
         cacheHits: fresh.filter((a) => a.source === "cache").length,
-        estCostUsd: estimateCost(2000, fresh.length),
+        estCostUsd: estimateCost(2000, fresh.filter((a) => a.model === DIFFUSION_MODEL).length),
         componentCount: Object.keys(spec.elements).length,
         questionCount: jev.questionCount, assetCount: assets.length,
         fromFallback: jev.fromFallback,

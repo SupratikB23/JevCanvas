@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { assetUrlsById, generateAllAssets } from "@/lib/assets";
 import { buildSpecFromCandidates, candidateRecipes, injectAssetUrls, planAssets } from "@/lib/composition";
 import { DIFFUSION_MODEL, JEV_MODEL_ID } from "@/lib/constants";
-import { placeholderFor, ReplicateFluxProvider, type DiffusionProvider } from "@/lib/diffusion";
+import { selectDiffusionProvider } from "@/lib/diffusion";
 import { estimateCost } from "@/lib/evaluation";
-import { hasServerSecrets } from "@/lib/env";
+import { hasJevSecrets } from "@/lib/env";
 import { newRequestId } from "@/lib/ids";
 import { evaluateComposition, fallbackDecisions } from "@/lib/jev";
 import { logEvent } from "@/lib/logging";
@@ -30,9 +30,11 @@ export async function POST(req: Request): Promise<NextResponse> {
   const prompt = parsed.data.prompt;
 
   try {
-    // Jev decisions (server-side secrets only; deterministic fallback otherwise).
+    // Jev decisions need only the gateway key; images use paid Replicate when
+    // configured, otherwise the free keyless provider (placeholder fallback
+    // inside generateAllAssets keeps the UI usable on provider failure).
     const jevStart = performance.now();
-    const jev = hasServerSecrets()
+    const jev = hasJevSecrets()
       ? await evaluateComposition({ prompt, apiKey: process.env.AI_GATEWAY_API_KEY ?? "" })
       : { decisions: fallbackDecisions(prompt), latencyMs: 0, fromFallback: true, questionCount: 12 };
     const jevLatencyMs = performance.now() - jevStart;
@@ -42,9 +44,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     // Diffusion assets (placeholder fallback keeps UI usable on failure).
     const diffusionStart = performance.now();
-    const provider: DiffusionProvider = hasServerSecrets()
-      ? new ReplicateFluxProvider(process.env.REPLICATE_API_TOKEN ?? "")
-      : { generate: async (r) => ({ url: placeholderFor("Illustration"), model: DIFFUSION_MODEL, seed: r.seed, width: 1024, height: 768 }) };
+    const provider = selectDiffusionProvider();
     const assets = await generateAllAssets({ items, intent: prompt, provider });
     const diffusionLatencyMs = performance.now() - diffusionStart;
 
@@ -73,7 +73,8 @@ export async function POST(req: Request): Promise<NextResponse> {
         jevCalls: 1,
         diffusionCalls: assets.filter((a) => a.source === "diffusion").length,
         cacheHits: assets.filter((a) => a.source === "cache").length,
-        estCostUsd: estimateCost(2000, assets.length),
+        // Cost only the paid model; free-provider and placeholder assets are $0.
+        estCostUsd: estimateCost(2000, assets.filter((a) => a.model === DIFFUSION_MODEL).length),
         componentCount: Object.keys(spec.elements).length,
         questionCount: jev.questionCount,
         assetCount: assets.length,
