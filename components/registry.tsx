@@ -17,8 +17,9 @@ function MissingAsset({ label }: { label: string }): React.JSX.Element {
 
 function AssetImage({ url, alt }: { url?: string; alt: string }): React.JSX.Element {
   if (!url) return <MissingAsset label={alt} />;
-  // SVG data-URI placeholders and https URLs only; anything else is rejected.
-  if (!(url.startsWith("https://") || url.startsWith("http://") || url.startsWith("data:image/svg+xml"))) {
+  // SVG data-URI placeholders and https URLs only. Plain http is rejected to
+  // avoid mixed-content blocks on HTTPS deploys.
+  if (!(url.startsWith("https://") || url.startsWith("data:image/svg+xml"))) {
     return <MissingAsset label={alt} />;
   }
   return (
@@ -63,7 +64,7 @@ function renderElement(
     case "Hero": {
       const assetUrl = str(props.assetUrl);
       const bg = str(props.backgroundAssetId);
-      const url = assetUrl || (bg.startsWith("http") ? bg : "");
+      const url = assetUrl || (bg.startsWith("https://") ? bg : "");
       return (
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 p-8">
           {url ? <AssetImage url={url} alt="Hero background" /> : null}
@@ -96,25 +97,46 @@ function renderElement(
           {children}
         </div>
       );
-    case "Button":
+    case "Button": {
+      const variant = str(props.variant, "primary");
+      const variantClass: Record<string, string> = {
+        primary: "bg-indigo-500 hover:bg-indigo-400",
+        secondary: "border border-slate-500 bg-transparent hover:bg-slate-700",
+        ghost: "bg-transparent hover:bg-slate-700",
+      };
       return (
         <button
-          className="rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium hover:bg-indigo-400"
+          className={`rounded-md px-4 py-2 text-sm font-medium ${variantClass[variant] ?? variantClass.primary}`}
           onClick={() => onAction("noop", { label: str(props.label) })}
         >
           {str(props.label, "Action")}
         </button>
       );
-    case "Badge":
+    }
+    case "Badge": {
+      const tone = str(props.tone, "neutral");
+      const toneClass: Record<string, string> = {
+        neutral: "bg-slate-700",
+        success: "bg-emerald-700",
+        warning: "bg-amber-700",
+        info: "bg-sky-700",
+      };
       return (
-        <span className="inline-block rounded-full bg-slate-700 px-2 py-0.5 text-xs">{str(props.text)}</span>
+        <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${toneClass[tone] ?? toneClass.neutral}`}>{str(props.text)}</span>
       );
+    }
     case "Tabs": {
       const tabs = Array.isArray(props.tabs) ? (props.tabs as string[]) : [];
+      const active = str(props.active);
       return (
         <div className="flex gap-2">
           {tabs.map((t) => (
-            <button key={t} className="rounded-md border border-slate-600 px-3 py-1 text-xs" onClick={() => onAction("selectTab", { tab: t })}>
+            <button
+              key={t}
+              aria-pressed={t === active}
+              className={`rounded-md border px-3 py-1 text-xs ${t === active ? "border-indigo-400 bg-indigo-500/30" : "border-slate-600"}`}
+              onClick={() => onAction("selectTab", { tab: t })}
+            >
               {t}
             </button>
           ))}
@@ -165,10 +187,23 @@ function renderElement(
     }
     case "Image":
       return <AssetImage url={str(props.assetUrl) || str(props.src) || undefined} alt={str(props.alt, "Generated image")} />;
-    case "Grid":
-      return <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>;
-    case "Stack":
-      return <div className="flex flex-col gap-3">{children}</div>;
+    case "Grid": {
+      // Static class map (not template interpolation) so Tailwind's content
+      // scanner keeps every variant. Falls back to 2 columns on bad input.
+      const cols = typeof props.columns === "number" ? props.columns : 2;
+      const colClass: Record<number, string> = {
+        1: "md:grid-cols-1",
+        2: "md:grid-cols-2",
+        3: "md:grid-cols-3",
+        4: "md:grid-cols-4",
+      };
+      return <div className={`grid grid-cols-1 gap-3 ${colClass[cols] ?? "md:grid-cols-2"}`}>{children}</div>;
+    }
+    case "Stack": {
+      const gap = str(props.gap, "md");
+      const gapClass: Record<string, string> = { sm: "gap-2", md: "gap-3", lg: "gap-5" };
+      return <div className={`flex flex-col ${gapClass[gap] ?? "gap-3"}`}>{children}</div>;
+    }
     case "Divider":
       return <hr className="border-slate-700" />;
     default:

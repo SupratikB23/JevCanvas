@@ -31,11 +31,15 @@ export default function HomePage(): React.JSX.Element {
   const [error, setError] = React.useState<string | null>(null);
   const [editPrompt, setEditPrompt] = React.useState("");
 
+  // Load once on mount; only persist after the initial load so first paint
+  // never overwrites a stored session with the empty default.
+  const sessionLoaded = React.useRef(false);
   React.useEffect(() => {
     setVersions(loadSessionVersions());
+    sessionLoaded.current = true;
   }, []);
   React.useEffect(() => {
-    persistSessionVersions(versions);
+    if (sessionLoaded.current) persistSessionVersions(versions);
   }, [versions]);
 
   function applyPayload(p: GeneratePayload, prompt: string): void {
