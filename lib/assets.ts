@@ -37,7 +37,9 @@ export async function generateAsset(args: {
 }): Promise<AssetState> {
   const requestId = newRequestId();
   const req: DiffusionRequest = diffusionRequestForPlan(args.item, args.intent);
-  const key = cacheKey(req.prompt, DIFFUSION_MODEL, { aspectRatio: req.aspectRatio, seed: req.seed });
+  // Key per provider model so free and paid results for the same prompt never
+  // collide (e.g. token added mid-session). Absent tag means the paid default.
+  const key = cacheKey(req.prompt, args.provider.model ?? DIFFUSION_MODEL, { aspectRatio: req.aspectRatio, seed: req.seed });
   const hit = cache.get(key);
   if (hit) {
     cacheHits += 1;
