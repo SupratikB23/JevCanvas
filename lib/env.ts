@@ -12,9 +12,9 @@ export interface ServerEnv {
 
 export function getServerEnv(): ServerEnv {
   const aiGatewayApiKey = process.env.AI_GATEWAY_API_KEY ?? "";
+  // Replicate token is optional: absent means the free image provider is used.
   const replicateApiToken = process.env.REPLICATE_API_TOKEN ?? "";
   if (!aiGatewayApiKey) throw new Error("Missing AI_GATEWAY_API_KEY.");
-  if (!replicateApiToken) throw new Error("Missing REPLICATE_API_TOKEN.");
   return {
     aiGatewayApiKey,
     replicateApiToken,
@@ -24,9 +24,21 @@ export function getServerEnv(): ServerEnv {
   };
 }
 
-// Non-throwing probe for routes that can degrade to placeholders.
+// Non-throwing probes for routes that can degrade gracefully.
+// Split gates: Jev runs on the gateway key alone; paid diffusion needs the
+// Replicate token, otherwise routes fall back to the free image provider.
+export function hasJevSecrets(): boolean {
+  return Boolean(process.env.AI_GATEWAY_API_KEY);
+}
+
+export function hasDiffusionSecrets(): boolean {
+  return Boolean(process.env.REPLICATE_API_TOKEN);
+}
+
+export function replicateApiToken(): string {
+  return process.env.REPLICATE_API_TOKEN ?? "";
+}
+
 export function hasServerSecrets(): boolean {
-  return Boolean(
-    process.env.AI_GATEWAY_API_KEY && process.env.REPLICATE_API_TOKEN,
-  );
+  return hasJevSecrets() && hasDiffusionSecrets();
 }
