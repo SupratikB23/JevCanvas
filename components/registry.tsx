@@ -16,7 +16,8 @@ function MissingAsset({ label }: { label: string }): React.JSX.Element {
 }
 
 function AssetImage({ url, alt }: { url?: string; alt: string }): React.JSX.Element {
-  if (!url) return <MissingAsset label={alt} />;
+  const [failed, setFailed] = React.useState(false);
+  if (!url || failed) return <MissingAsset label={alt} />;
   // SVG data-URI placeholders and https URLs only. Plain http is rejected to
   // avoid mixed-content blocks on HTTPS deploys.
   if (!(url.startsWith("https://") || url.startsWith("data:image/svg+xml"))) {
@@ -24,7 +25,7 @@ function AssetImage({ url, alt }: { url?: string; alt: string }): React.JSX.Elem
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt={alt} className="h-auto w-full rounded-lg object-cover" loading="lazy" />
+    <img src={url} alt={alt} className="h-auto w-full rounded-lg object-cover" loading="lazy" onError={() => setFailed(true)} />
   );
 }
 
