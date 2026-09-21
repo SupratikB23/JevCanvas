@@ -15,9 +15,14 @@ constrained component catalog, generating only the visual assets it actually nee
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in AI_GATEWAY_API_KEY + REPLICATE_API_TOKEN
+cp .env.example .env.local   # fill in AI_GATEWAY_API_KEY (required)
 npm run dev
 ```
+
+Only `AI_GATEWAY_API_KEY` (Vercel AI Gateway, model `typesafe-ai/jev`) is
+required. `REPLICATE_API_TOKEN` is optional: when set, images come from paid
+`flux-schnell`; when absent, the app uses a free keyless image provider, so
+the full Jev → diffusion → render pipeline works with just the gateway key.
 
 Checks:
 
