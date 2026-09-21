@@ -167,7 +167,10 @@ export class FreePollinationsProvider implements DiffusionProvider {
     const { width, height } = dimensionsForAspect(req.aspectRatio);
     const head = req.prompt.slice(0, 600);
     const prompt = encodeURIComponent(`${head} No readable text, no logos, no watermark.`);
-    const url = `${FREE_DIFFUSION_BASE_URL}/${prompt}?width=${width}&height=${height}&seed=${req.seed ?? 42}&nologo=true&model=flux`;
+    // negative_prompt suppresses the garbled pseudo-text free models love to
+    // render; nologo drops the watermark. Both are best-effort hints.
+    const negative = encodeURIComponent("worst quality, blurry, text, words, letters, watermark, logo");
+    const url = `${FREE_DIFFUSION_BASE_URL}/${prompt}?width=${width}&height=${height}&seed=${req.seed ?? 42}&nologo=true&model=flux&negative_prompt=${negative}`;
     logEvent({ requestId, stage: "diffusion", model: FREE_DIFFUSION_MODEL, latencyMs: 0, status: "ok" });
     return { url: normalizeAssetUrl(url), model: FREE_DIFFUSION_MODEL, seed: req.seed, width, height };
   }

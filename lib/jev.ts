@@ -128,6 +128,14 @@ function parseAnswer(
 ): JevAnswer {
   const obj = (raw ?? {}) as Record<string, unknown>;
   if (question.type === "boolean") {
+    // Real gateway shape: { type: "boolean", probability: 0..1 } where the
+    // probability is that of the TRUE case (per AI Gateway evaluation docs).
+    const p = obj.probability;
+    if (typeof p === "number" && Number.isFinite(p)) {
+      const cp = clamp01(p);
+      return { booleanValue: cp >= 0.5, confidence: cp >= 0.5 ? cp : 1 - cp };
+    }
+    // Tolerant legacy shapes.
     if (typeof obj.value === "boolean")
       return { booleanValue: obj.value, confidence: toConfidence(obj.confidence) };
     if (typeof obj.choice === "string")
@@ -135,14 +143,21 @@ function parseAnswer(
     throw new Error(`Invalid boolean answer for ${name}.`);
   }
   if (question.type === "choice") {
+    // Real gateway shape: { type: "choice", choice, probabilities }.
     const criteria = question.criteria ?? {};
     const keys = Array.isArray(criteria) ? criteria : Object.keys(criteria);
     if (typeof obj.choice === "string" && keys.includes(obj.choice))
       return { choice: obj.choice, confidence: toConfidence(obj.confidence) };
     throw new Error(`Invalid choice answer for ${name}.`);
   }
-  if (typeof obj.score === "number" && Number.isFinite(obj.score))
-    return { score: clamp01(obj.score), confidence: toConfidence(obj.confidence) };
+  // Real gateway shape: { type: "score", score, probabilities } where score is
+  // the interpolated rung index in [0, criteria.length - 1]. Normalize to 0..1.
+  // A bare 0..1 score (no array criteria) is accepted as-is for tolerance.
+  if (typeof obj.score === "number" && Number.isFinite(obj.score)) {
+    const criteria = question.criteria;
+    const rungs = Array.isArray(criteria) ? Math.max(criteria.length - 1, 1) : 1;
+    return { score: clamp01(obj.score / rungs), confidence: toConfidence(obj.confidence) };
+  }
   throw new Error(`Invalid score answer for ${name}.`);
 }
 
@@ -273,7 +288,10 @@ export async function evaluateComposition(args: {
       return { decisions, latencyMs, fromFallback: false, questionCount: Object.keys(questions).length };
     } catch (err) {
       lastError = err;
-      logEvent({ requestId, stage: "jev", model: JEV_MODEL_ID, latencyMs: performance.now() - start, status: "error", note: attempt === 0 ? "retrying once" : "using fallback" });
+      // Server-side only detail (HTTP status / parse cause). Never the key:
+      // it travels in the Authorization header and is never logged.
+      const detail = err instanceof Error ? err.message : "unknown error";
+      logEvent({ requestId, stage: "jev", model: JEV_MODEL_ID, latencyMs: performance.now() - start, status: "error", note: `${attempt === 0 ? "retrying once" : "using fallback"}: ${detail}` });
     }
   }
   void lastError;
