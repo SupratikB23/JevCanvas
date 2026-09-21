@@ -4,9 +4,12 @@ import {
   DIFFUSION_MAX_RETRIES,
   DIFFUSION_MODEL,
   DIFFUSION_TIMEOUT_MS,
+  FREE_DIFFUSION_BASE_URL,
+  FREE_DIFFUSION_MODEL,
   MAX_IMAGE_HEIGHT,
   MAX_IMAGE_WIDTH,
 } from "./constants";
+import { hasDiffusionSecrets, replicateApiToken } from "./env";
 import { newRequestId } from "./ids";
 import { logEvent } from "./logging";
 import type { AssetPlanItem } from "./schemas";
@@ -27,6 +30,9 @@ export interface DiffusionResult {
 }
 
 export interface DiffusionProvider {
+  // Optional model tag so the asset cache can key per provider. Absent means
+  // the default paid model (keeps existing stub providers working as before).
+  readonly model?: string;
   generate(req: DiffusionRequest): Promise<DiffusionResult>;
 }
 
@@ -80,6 +86,7 @@ export function placeholderFor(type: string): string {
 }
 
 export class ReplicateFluxProvider implements DiffusionProvider {
+  readonly model = DIFFUSION_MODEL;
   constructor(
     private apiToken: string,
     private fetchImpl: FetchLike = fetch,
@@ -145,4 +152,32 @@ export function diffusionRequestForPlan(
     aspectRatio: item.aspectRatio,
     seed: item.seed,
   };
+}
+
+// Free tier: keyless Pollinations provider. The image URL itself encodes the
+// request, so generation is pure URL-building with no server-side fetch and
+// no account. Lower fidelity and no seed guarantees vs flux-schnell, but $0.
+// The head of the prompt carries the subject; the tail constraint is
+// re-appended so it survives the length cap for very long user intents.
+export class FreePollinationsProvider implements DiffusionProvider {
+  readonly model = FREE_DIFFUSION_MODEL;
+
+  async generate(req: DiffusionRequest): Promise<DiffusionResult> {
+    const requestId = newRequestId();
+    const { width, height } = dimensionsForAspect(req.aspectRatio);
+    const head = req.prompt.slice(0, 600);
+    const prompt = encodeURIComponent(`${head} No readable text, no logos, no watermark.`);
+    const url = `${FREE_DIFFUSION_BASE_URL}/${prompt}?width=${width}&height=${height}&seed=${req.seed ?? 42}&nologo=true&model=flux`;
+    logEvent({ requestId, stage: "diffusion", model: FREE_DIFFUSION_MODEL, latencyMs: 0, status: "ok" });
+    return { url: normalizeAssetUrl(url), model: FREE_DIFFUSION_MODEL, seed: req.seed, width, height };
+  }
+}
+
+// Single selection point for all routes: paid Replicate when the token is
+// configured, otherwise the free keyless provider. Never placeholders here;
+// generateAsset() in lib/assets.ts already falls back to placeholders when a
+// provider throws.
+export function selectDiffusionProvider(): DiffusionProvider {
+  if (hasDiffusionSecrets()) return new ReplicateFluxProvider(replicateApiToken());
+  return new FreePollinationsProvider();
 }
