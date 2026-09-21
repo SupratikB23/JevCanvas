@@ -24,6 +24,11 @@ export const DIFFUSION_TIMEOUT_MS = 60_000;
 export const DIFFUSION_MAX_RETRIES = 1;
 export const DIFFUSION_DEFAULT_STEPS = 4;
 
+// Free tier: keyless Pollinations provider used when REPLICATE_API_TOKEN is
+// absent. Lower fidelity than flux-schnell, but $0 and no account needed.
+export const FREE_DIFFUSION_MODEL = "pollinations/flux";
+export const FREE_DIFFUSION_BASE_URL = "https://image.pollinations.ai/prompt";
+
 export const JEV_EST_COST_PER_1M_INPUT = 0.04;
 export const DIFFUSION_EST_COST_PER_IMAGE = 0.003;
 
